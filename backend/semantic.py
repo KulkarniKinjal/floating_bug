@@ -1,7 +1,13 @@
 # semantic.py
+from functools import lru_cache
+
 from sentence_transformers import SentenceTransformer, util
 
-_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+@lru_cache(maxsize=1)
+def get_model():
+    """Load the embedding model on first ranking request, then reuse it."""
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
 def split_sentences(text):
     parts = []
@@ -21,8 +27,9 @@ def semantic_score(resume_text, jd):
     if not sentences:
         return 0.0
 
-    skill_emb = _model.encode(skills, convert_to_tensor=True)
-    sent_emb = _model.encode(sentences, convert_to_tensor=True)
+    model = get_model()
+    skill_emb = model.encode(skills, convert_to_tensor=True)
+    sent_emb = model.encode(sentences, convert_to_tensor=True)
 
     sims = util.cos_sim(skill_emb, sent_emb)
     best_per_skill = sims.max(dim=1).values

@@ -1,21 +1,19 @@
 # fusion.py
 
-def normalize(scores):
-    if not scores:
-        return []
-    lo, hi = min(scores), max(scores)
-    if hi == lo:
-        return [0.5 for _ in scores]
-    return [(s - lo) / (hi - lo) for s in scores]
+from backend.ranking import normalize_scores, rank_candidates
 
 def fuse_and_rank(candidates, w_semantic=0.5, w_keyword=0.5):
-    sem = normalize([c["semantic_score"] for c in candidates])
-    kw = normalize([c["keyword_score"] for c in candidates])
+    sem = normalize_scores([c["semantic_score"] for c in candidates])
+    kw = normalize_scores([c["keyword_score"] for c in candidates])
 
     for c, s, k in zip(candidates, sem, kw):
+        c["raw_semantic_score"] = c["semantic_score"]
+        c["raw_keyword_score"] = c["keyword_score"]
+        c["semantic_score"] = round(s, 3)
+        c["keyword_score"] = round(k, 3)
         c["final_score"] = round(w_semantic * s + w_keyword * k, 3)
 
-    return sorted(candidates, key=lambda c: c["final_score"], reverse=True)
+    return rank_candidates(candidates)
 
 if __name__ == "__main__":
     mock = [

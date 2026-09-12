@@ -77,13 +77,75 @@ ALIAS_MAP: Dict[str, List[str]] = {
                                         "data structures & algorithms"],
     "object oriented programming": ["oop", "object oriented programming",
                                      "object-oriented programming"],
+    "express": ["express", "express.js", "expressjs"],
+    "json": ["json"],
+    "jest": ["jest"],
+    "mocha": ["mocha"],
+    "agile": ["agile", "agile methodology", "agile methodologies"],
+    "scrum": ["scrum"],
+    "internship": ["internship", "intern", "interned"],
+    "personal projects": ["personal project", "personal projects", "side project", "side projects"],
+    "deployed": ["deployed", "deployment", "deploy"],
 }
+
+# Terms in each group count as evidence for one another.  These are explicit
+# product requirements, not inferred similarity: the cautionary claims listed
+# in the review notes are deliberately not included here.
+BIDIRECTIONAL_EQUIVALENCE_GROUPS: List[List[str]] = [
+    ["nosql", "no-sql", "mongodb", "mongo", "firestore", "firebase firestore",
+     "document database", "document-oriented database"],
+    ["sql", "relational database", "mysql", "postgresql", "postgres"],
+    ["react", "react.js", "reactjs"],
+    ["node.js", "nodejs", "express", "express.js", "expressjs"],
+    ["modern frontend framework", "angular", "angular.js", "angularjs", "vue", "vue.js", "vuejs"],
+    ["backend services", "backend service", "spring boot", "laravel", "php"],
+    ["authentication service", "firebase authentication"],
+    ["consuming rest apis", "axios", "fetch", "retrofit"],
+    ["building rest endpoints", "rest endpoints", "designing rest apis", "rest apis"],
+    ["git", "github", "version control"],
+    ["testing frameworks", "jest", "mocha", "unit tests", "integration tests"],
+    ["docker", "containerization", "containerisation", "containerized", "containerised"],
+    ["cloud basics", "aws", "gcp", "azure", "ec2", "s3", "lambda"],
+    ["agile", "scrum", "sprints", "standups", "retrospectives"],
+    ["ci/cd", "cicd", "github actions"],
+    ["live deployment", "deployment", "deployed", "render", "vercel", "netlify"],
+    ["real-time web communication", "socket.io", "socketio"],
+    ["authentication/authorization", "authentication", "authorization", "jwt", "role-based access"],
+]
+
+
+def _equivalents_for(skill: str) -> List[str]:
+    key = skill.strip().lower()
+    equivalents = []
+    for group in BIDIRECTIONAL_EQUIVALENCE_GROUPS:
+        if key in group:
+            equivalents.extend(group)
+    return equivalents
 
 
 def _aliases_for(skill: str) -> List[str]:
     """Return the alias list for a skill, falling back to just the skill name itself."""
     key = skill.strip().lower()
-    return ALIAS_MAP.get(key, [key])
+    return ALIAS_MAP.get(key, [key]) + _equivalents_for(key)
+
+
+def _aliases_for_requirement(requirement: str) -> List[str]:
+    """Return aliases for concrete skills named inside a JD requirement."""
+    aliases = list(_aliases_for(requirement))
+    for canonical_skill, skill_aliases in ALIAS_MAP.items():
+        names_to_check = [canonical_skill] + [alias for alias in skill_aliases if len(alias) >= 3]
+        if any(_alias_pattern(name).search(requirement) for name in names_to_check):
+            aliases.extend(_aliases_for(canonical_skill))
+    for group in BIDIRECTIONAL_EQUIVALENCE_GROUPS:
+        # A named preferred framework is more specific than the broad category.
+        # For example, "React preferred" should not be satisfied by Angular.
+        if "modern frontend framework" in group and _alias_pattern("react").search(requirement):
+            continue
+        if any(_alias_pattern(term).search(requirement) for term in group if len(term) >= 3):
+            aliases.extend(group)
+            if "modern frontend framework" in group:
+                aliases.extend(_aliases_for("react"))
+    return list(dict.fromkeys(alias.lower() for alias in aliases if alias.strip()))
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +197,7 @@ def find_skill_evidence(resume_text: str, skill: str) -> Optional[str]:
         return None
 
     sentences = _split_sentences(resume_text)
-    aliases = _aliases_for(skill)
+    aliases = _aliases_for_requirement(skill)
     patterns = [_alias_pattern(a) for a in aliases]
 
     for sentence in sentences:
@@ -206,7 +268,8 @@ def compute_keyword_scores(resume_texts: List[str], jd: Dict) -> List[float]:
     query_tokens = tokenize(build_jd_query_text(jd))
     raw_scores = bm25.get_scores(query_tokens)  # numpy array, higher = more relevant
 
-    return _min_max_normalize(list(raw_scores))
+    # Fusion normalizes keyword and semantic scores together with the same rule.
+    return [float(score) for score in raw_scores]
 
 
 def _min_max_normalize(scores: List[float]) -> List[float]:
